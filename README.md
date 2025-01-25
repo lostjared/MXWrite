@@ -12,7 +12,6 @@ This repository provides a C++ class (`Writer`) that uses the [FFmpeg](https://f
    - [Basic Initialization (`open`/`write`)](#basic-initialization-openwrite)
    - [Timestamp-Based Writing (`open_ts`/`write_ts`)](#timestamp-based-writing-open_tswrite_ts)
 5. [Key Implementation Details](#key-implementation-details)
-6. [License](#license)
 
 ---
 
