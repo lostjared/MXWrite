@@ -40,7 +40,7 @@ It can handle both:
    - `libavutil`
    - `libswscale`
 2. **Threads** (C++11 and above) – Uses `<thread>` and `<mutex>` from the standard library.
-3. A **C++14 (or higher)** compatible compiler.
+3. A **C++17 (or higher)** compatible compiler.
 
 To install FFmpeg development libraries on your platform:
 - **Ubuntu / Debian**:
