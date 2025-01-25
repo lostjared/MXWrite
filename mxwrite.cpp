@@ -35,55 +35,65 @@ void Writer::calculateFPSFraction(float fps, int &fps_num, int &fps_den) {
 bool Writer::open(const std::string& filename, int w, int h, float fps, int bitrate_kbps) {
     avformat_network_init();
     av_log_set_level(AV_LOG_INFO);
-    opened = false; // Initialize opened to false
+    opened = false;
 
     if (avformat_alloc_output_context2(&format_ctx, nullptr, "mp4", filename.c_str()) < 0) {
         std::cerr << "Could not allocate output context.\n";
         return false;
     }
+
     const AVCodec* codec = avcodec_find_encoder(AV_CODEC_ID_H264);
     if (!codec) {
         std::cerr << "Could not find H.264 encoder.\n";
         avformat_free_context(format_ctx);
         return false;
     }
+
     stream = avformat_new_stream(format_ctx, codec);
     if (!stream) {
         std::cerr << "Could not create new stream.\n";
         avformat_free_context(format_ctx);
         return false;
     }
-    width  = w;
+
+    width = w;
     height = h;
     calculateFPSFraction(fps, fps_num, fps_den);
-    time_base = AVRational{fps_den, fps_num};
-    stream->time_base = time_base;
+
+    // Simple timebase = 1/fps
+    AVRational tb = {fps_den, fps_num};
+    stream->time_base = tb;
+
     codec_ctx = avcodec_alloc_context3(codec);
     if (!codec_ctx) {
         std::cerr << "Could not allocate codec context.\n";
         avformat_free_context(format_ctx);
         return false;
     }
-    codec_ctx->width     = width;
-    codec_ctx->height    = height;
-    codec_ctx->time_base = stream->time_base; 
-    codec_ctx->framerate = AVRational{ fps_num, fps_den };
-    codec_ctx->pix_fmt   = AV_PIX_FMT_YUV420P;
-    codec_ctx->bit_rate  = bitrate_kbps * 1000LL; 
-    codec_ctx->gop_size  = 12; 
 
+    codec_ctx->width = width;
+    codec_ctx->height = height;
+    codec_ctx->time_base = stream->time_base;
+    codec_ctx->framerate = AVRational{fps_num, fps_den};
+    codec_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+    codec_ctx->bit_rate = bitrate_kbps * 1000LL;
+    codec_ctx->gop_size = 12;
+    codec_ctx->max_b_frames = 0;
     codec_ctx->thread_count = std::thread::hardware_concurrency();
     codec_ctx->thread_type = FF_THREAD_FRAME;
-    codec_ctx->max_b_frames = 0;
-    codec_ctx->delay = 0;
-    codec_ctx->flags |= AV_CODEC_FLAG_LOW_DELAY;
-    
+
     AVBufferRef *hw_device_ctx = nullptr;
     if (av_hwdevice_ctx_create(&hw_device_ctx, AV_HWDEVICE_TYPE_CUDA, nullptr, nullptr, 0) == 0) {
         codec_ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
     } else {
         std::cerr << "Could not initialize hardware acceleration.\n";
     }
+
+    // Configure rate control
+    codec_ctx->rc_max_rate = bitrate_kbps * 1000LL;
+    codec_ctx->rc_min_rate = bitrate_kbps * 1000LL;
+    codec_ctx->rc_buffer_size = bitrate_kbps * 2000LL;
+    codec_ctx->rc_initial_buffer_occupancy = codec_ctx->rc_buffer_size * 3/4;
 
     if (format_ctx->oformat->flags & AVFMT_GLOBALHEADER) {
         codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
@@ -184,11 +194,8 @@ void Writer::write(void* rgba_buffer)
     int in_linesize = width * 4; 
     uint8_t* src_ptr = static_cast<uint8_t*>(rgba_buffer);
 
-    for (int y = 0; y < height; y++) {
-        uint8_t* dst = frameRGBA->data[0] + y * frameRGBA->linesize[0];
-        uint8_t* src = src_ptr + y * in_linesize;
-        memcpy(dst, src, in_linesize);
-    }
+    memcpy(frameRGBA->data[0], rgba_buffer, width * height * 4);
+
     sws_scale(
         sws_ctx,
         frameRGBA->data,
@@ -318,7 +325,6 @@ bool Writer::open_ts(const std::string& filename, int w, int h, float fps, int b
     recordingStart = std::chrono::steady_clock::now();
     return true;
 }
-
 
 void Writer::write_ts(void* rgba_buffer) {
     if (!opened || !rgba_buffer) {

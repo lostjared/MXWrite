@@ -1,4 +1,4 @@
-# MXWrite - simple static library Wrapper for writing RGBA video
+# MXWrite - simple static library for writing RGBA video
 # FFmpeg-Based Video Writer
 
 This repository provides a C++ class (`Writer`) that uses the [FFmpeg](https://ffmpeg.org/) libraries to write raw RGBA frames to an MP4 (or TS) file in H.264 format. It supports both a straightforward, frame-by-frame workflow (`open()`, `write()`, and `close()`) and a timestamp-based workflow (`open_ts()`, `write_ts()`, and `close()`).  
@@ -12,6 +12,7 @@ This repository provides a C++ class (`Writer`) that uses the [FFmpeg](https://f
    - [Basic Initialization (`open`/`write`)](#basic-initialization-openwrite)
    - [Timestamp-Based Writing (`open_ts`/`write_ts`)](#timestamp-based-writing-open_tswrite_ts)
 5. [Key Implementation Details](#key-implementation-details)
+6. [License](#license)
 
 ---
 
