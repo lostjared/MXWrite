@@ -3,18 +3,17 @@ project(MXWrite LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(GNUInstallDirs)
-find_library(AVFORMAT_LIB NAMES avformat REQUIRED)
-find_library(AVCODEC_LIB NAMES avcodec REQUIRED)
-find_library(AVUTIL_LIB NAMES avutil REQUIRED)
-find_library(SWSCALE_LIB NAMES swscale REQUIRED)
-message(STATUS "AVFORMAT_LIB: ${AVFORMAT_LIB}")
-message(STATUS "AVCODEC_LIB: ${AVCODEC_LIB}")
-message(STATUS "AVUTIL_LIB: ${AVUTIL_LIB}")
-message(STATUS "SWSCALE_LIB: ${SWSCALE_LIB}")
-set(FF_LIBS ${AVFORMAT_LIB} ${AVCODEC_LIB} ${AVUTIL_LIB} ${SWSCALE_LIB})
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(FFMPEG REQUIRED 
+    libavcodec 
+    libavformat 
+    libavutil 
+    libswscale 
+)
 add_library(mxwrite STATIC mxwrite.cpp)
-target_include_directories(mxwrite PRIVATE /usr/include /usr/local/include ${CMAKE_PREFIX_PATH}/include ${CMAKE_INSTALL_PREFIX}/include /opt/homebrew/include)
-target_link_libraries(mxwrite PRIVATE ${AVFORMAT_LIB} ${AVCODEC_LIB} ${AVUTIL_LIB} ${SWSCALE_LIB})
+target_include_directories(mxwrite PRIVATE ${FFMPEG_INCLUDE_DIRS})
+target_link_libraries(mxwrite PRIVATE ${FFMPEG_LIBRARIES})
 install(FILES mxwrite.hpp
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(TARGETS mxwrite
