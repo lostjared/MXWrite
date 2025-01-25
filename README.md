@@ -56,59 +56,23 @@ To install FFmpeg development libraries on your platform:
   ```
 
 ---
-
 ## Building
 
-Below is one straightforward way to build the project with **CMake**.
-
-1. **Create a `CMakeLists.txt`** in your project that includes `ffwrite.cpp` (or wherever this code lives), and links to the appropriate FFmpeg libraries. For example:
-
-   ```cmake
-   cmake_minimum_required(VERSION 3.10)
-   project(FFmpegWriterDemo CXX)
-
-   # Find FFmpeg libraries (example, might need adjusting to your environment)
-   find_package(PkgConfig REQUIRED)
-   pkg_check_modules(FFMPEG REQUIRED 
-       libavcodec 
-       libavformat 
-       libavutil 
-       libswscale 
-   )
-
-   add_library(ffwriter STATIC
-       ffwrite.cpp   # or whatever filename you have for the .cpp file
-   )
-   target_include_directories(ffwriter PUBLIC 
-       ${FFMPEG_INCLUDE_DIRS}
-   )
-   target_link_libraries(ffwriter PUBLIC
-       ${FFMPEG_LIBRARIES}
-       pthread       # On Linux-like systems
-   )
-
-   # Optionally create an executable to test usage
-   add_executable(writer_test main.cpp)
-   target_link_libraries(writer_test PRIVATE ffwriter)
-   ```
-
-2. **Configure and build**:
+ **Configure and build**:
    ```bash
    mkdir -p build
    cd build
    cmake ..
    cmake --build .
    ```
-3. This will produce either a static library (`libffwriter.a`) or a shared library (`libffwriter.so`) depending on how you configure `add_library`. It will also produce the `writer_test` executable if you created a test target.
-
 ---
 
 ## Usage
 
-You can include the `ffwrite.hpp` header in your own C++ files and link against the library. Below is a quick example:
+You can include the `mxwrite.hpp` header in your own C++ files and link against the library. Below is a quick example:
 
 ```cpp
-#include "ffwrite.hpp"
+#include "mxwrite.hpp"
 #include <vector>
 
 int main() {
