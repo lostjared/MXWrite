@@ -21,12 +21,16 @@ struct Frame_Data {
 
 class Writer {
 public:
+
+    Writer() : opened(false), queue_mutex(), writer_mutex(), frame_mutex() {}
+
     bool open(const std::string& filename, int width, int height, float fps, int bitrate_kbps);
     void write(void* rgba_buffer);
     bool open_ts(const std::string& filename, int width, int height, float fps, int bitrate_kbps);
     void write_ts(void* rgba_buffer);
     void close();
     bool is_open() const { return opened; }
+  
     ~Writer() {
         if (is_open()) {
             close();
@@ -35,7 +39,7 @@ public:
     }
 
 private:
-    bool opened = false;
+    bool opened {false};
     int width = 0;
     int height = 0;
     int frame_count = 0;
@@ -52,7 +56,9 @@ private:
     int fps_den = 0; 
     std::queue<Frame_Data> frame_queue;
     const size_t MAX_QUEUE_SIZE = 30; 
-    std::mutex queue_mutex;
+    std::mutex queue_mutex{};
+    std::mutex writer_mutex{};
+    std::mutex frame_mutex{};
 };
 
 #endif 
