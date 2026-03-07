@@ -34,7 +34,7 @@ endif()
 
 find_package(PkgConfig REQUIRED)
 
-pkg_check_modules(FFMPEG IMPORTED_TARGET
+pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
     libavcodec>=58.0.0
     libavformat>=58.0.0
     libavutil>=56.0.0
@@ -81,6 +81,9 @@ if(NOT FFMPEG_FOUND)
     endif()
 else()
     message(STATUS "Found FFmpeg via pkg-config")
+    if(NOT FFMPEG_LIBRARIES AND FFMPEG_LINK_LIBRARIES)
+        set(FFMPEG_LIBRARIES ${FFMPEG_LINK_LIBRARIES})
+    endif()
 endif()
 
 set(CMAKE_REQUIRED_INCLUDES ${FFMPEG_INCLUDE_DIRS})
@@ -156,12 +159,11 @@ target_include_directories(mxwrite PUBLIC
     ${FFMPEG_INCLUDE_DIRS}
 )
 
-# Link libraries - handle both pkg-config and manual search
-if(FFMPEG_FOUND AND TARGET PkgConfig::FFMPEG)
-    target_link_libraries(mxwrite PUBLIC PkgConfig::FFMPEG Threads::Threads)
-else()
-    target_link_libraries(mxwrite PUBLIC ${FFMPEG_LIBRARIES} Threads::Threads)
+if(FFMPEG_LIBRARY_DIRS)
+    target_link_directories(mxwrite PUBLIC ${FFMPEG_LIBRARY_DIRS})
 endif()
+
+target_link_libraries(mxwrite PUBLIC PkgConfig::FFMPEG Threads::Threads)
 
 target_compile_options(mxwrite PRIVATE -O3 -Wall -Wextra -pedantic)
 include(CMakePackageConfigHelpers)

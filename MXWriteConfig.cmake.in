@@ -1,4 +1,17 @@
 @PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+find_dependency(PkgConfig)
+
+if(NOT TARGET PkgConfig::FFMPEG)
+    pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
+        libavcodec>=58.0.0
+        libavformat>=58.0.0
+        libavutil>=56.0.0
+        libswscale>=5.0.0
+    )
+endif()
+
 set(MXWrite_INCLUDE_DIR "@CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_INCLUDEDIR@")
 set(MXWrite_LIBRARY_DIR "@CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_LIBDIR@")
 if(NOT EXISTS "${MXWrite_INCLUDE_DIR}")
