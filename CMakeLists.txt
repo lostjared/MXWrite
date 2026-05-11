@@ -33,6 +33,7 @@ if(APPLE)
 endif()
 
 find_package(PkgConfig REQUIRED)
+find_package(CUDAToolkit QUIET)
 
 pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
     libavcodec>=58.0.0
@@ -164,6 +165,14 @@ if(FFMPEG_LIBRARY_DIRS)
 endif()
 
 target_link_libraries(mxwrite PUBLIC PkgConfig::FFMPEG Threads::Threads)
+
+if(CUDAToolkit_FOUND)
+    target_compile_definitions(mxwrite PRIVATE MXWRITE_HAS_CUDA_COPY=1)
+    target_link_libraries(mxwrite PUBLIC CUDA::cudart)
+    message(STATUS "MXWrite: CUDA runtime enabled for device-frame ingestion")
+else()
+    message(STATUS "MXWrite: CUDA runtime not found, device-frame ingestion disabled")
+endif()
 
 target_compile_options(mxwrite PRIVATE -O3 -Wall -Wextra -pedantic)
 include(CMakePackageConfigHelpers)
