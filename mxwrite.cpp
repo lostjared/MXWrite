@@ -517,7 +517,10 @@ bool Writer::initHardwareEncoding() {
     frames_ctx->sw_format = AV_PIX_FMT_RGBA;
     frames_ctx->width = width;
     frames_ctx->height = height;
-    frames_ctx->initial_pool_size = 20;
+    // Pool must comfortably exceed MAX_QUEUE_SIZE so av_hwframe_get_buffer()
+    // on the producer thread never becomes the throttle.  A few extra slots
+    // cover frames currently in-flight inside the encoder.
+    frames_ctx->initial_pool_size = static_cast<int>(MAX_QUEUE_SIZE) + 8;
 
     if (av_hwframe_ctx_init(hw_frames_ctx) < 0) {
         return false;
@@ -535,6 +538,16 @@ bool Writer::initHardwareEncoding() {
     if (av_frame_get_buffer(upload_sw_frame, 32) < 0) {
         return false;
     }
+
+#ifdef MXWRITE_HAS_CUDA_COPY
+    // Non-blocking stream so device-to-device uploads from write_cuda_rgba()
+    // do not serialise against the renderer's CUDA work on the default stream.
+    if (!cuda_upload_stream) {
+        if (cudaStreamCreateWithFlags(&cuda_upload_stream, cudaStreamNonBlocking) != cudaSuccess) {
+            cuda_upload_stream = nullptr;
+        }
+    }
+#endif
 
     return true;
 }
@@ -804,8 +817,14 @@ bool Writer::openInternal(const std::string &filename, int w, int h, float fps, 
     codec_ctx->gop_size = 30;
     codec_ctx->max_b_frames = 0;
     codec_ctx->thread_count = std::max(1u, std::thread::hardware_concurrency());
-    codec_ctx->thread_type = FF_THREAD_SLICE;
-    codec_ctx->slices = 4;
+    // Frame threading scales much better than slice threading for x264 when
+    // latency is not a concern; switch only to slice threading in realtime/ts.
+    if (ts_mode || opts.realtime) {
+        codec_ctx->thread_type = FF_THREAD_SLICE;
+        codec_ctx->slices = 4;
+    } else {
+        codec_ctx->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+    }
     codec_ctx->delay = 0;
 
     if (ts_mode || opts.realtime) {
@@ -860,8 +879,12 @@ bool Writer::openInternal(const std::string &filename, int w, int h, float fps, 
             codec_ctx->gop_size = 30;
             codec_ctx->max_b_frames = 0;
             codec_ctx->thread_count = std::max(1u, std::thread::hardware_concurrency());
-            codec_ctx->thread_type = FF_THREAD_SLICE;
-            codec_ctx->slices = 4;
+            if (ts_mode || opts.realtime) {
+                codec_ctx->thread_type = FF_THREAD_SLICE;
+                codec_ctx->slices = 4;
+            } else {
+                codec_ctx->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+            }
             codec_ctx->delay = 0;
 
             if (ts_mode || opts.realtime) {
@@ -1050,7 +1073,7 @@ void Writer::write(void *rgba_buffer) {
         } else if (stop_requested || encode_queue.size() >= MAX_QUEUE_SIZE) {
             static int drop_counter = 0;
             if (++drop_counter % 30 == 0) {
-                std::cerr << "Writer: dropped " << drop_counter << " frames (encoder queue full)\n";
+                std::cerr << "Writer: dropped " << drop_counter << " SDR frames (encoder queue full)\n";
             }
             releaseFrame(queued_frame);
             return;
@@ -1176,15 +1199,27 @@ bool Writer::write_cuda_rgba(void *cuda_rgba_buffer, int src_stride, bool bottom
     }
 
 #ifdef MXWRITE_HAS_CUDA_COPY
+    cudaStream_t stream = cuda_upload_stream;
+    const bool use_async_stream = (stream != nullptr);
     if (!bottom_up) {
-        const auto copy_err = cudaMemcpy2D(
-            queued_frame->data[0],
-            static_cast<size_t>(queued_frame->linesize[0]),
-            cuda_rgba_buffer,
-            static_cast<size_t>(src_stride),
-            static_cast<size_t>(width) * 4,
-            static_cast<size_t>(height),
-            cudaMemcpyDeviceToDevice);
+        const auto copy_err = use_async_stream
+                                  ? cudaMemcpy2DAsync(
+                                        queued_frame->data[0],
+                                        static_cast<size_t>(queued_frame->linesize[0]),
+                                        cuda_rgba_buffer,
+                                        static_cast<size_t>(src_stride),
+                                        static_cast<size_t>(width) * 4,
+                                        static_cast<size_t>(height),
+                                        cudaMemcpyDeviceToDevice,
+                                        stream)
+                                  : cudaMemcpy2D(
+                                        queued_frame->data[0],
+                                        static_cast<size_t>(queued_frame->linesize[0]),
+                                        cuda_rgba_buffer,
+                                        static_cast<size_t>(src_stride),
+                                        static_cast<size_t>(width) * 4,
+                                        static_cast<size_t>(height),
+                                        cudaMemcpyDeviceToDevice);
 
         if (copy_err != cudaSuccess) {
             std::cerr << "Writer: cudaMemcpy2D device upload failed: " << cudaGetErrorString(copy_err) << "\n";
@@ -1192,6 +1227,9 @@ bool Writer::write_cuda_rgba(void *cuda_rgba_buffer, int src_stride, bool bottom
             return false;
         }
     } else {
+        // Flip vertically by issuing one async row copy per destination row
+        // onto a single stream — kept asynchronous so launch overhead overlaps
+        // and the producer thread only blocks once at cudaStreamSynchronize.
         auto *src_base = static_cast<unsigned char *>(cuda_rgba_buffer);
         auto *dst_base = queued_frame->data[0];
         const size_t row_bytes = static_cast<size_t>(width) * 4;
@@ -1199,12 +1237,25 @@ bool Writer::write_cuda_rgba(void *cuda_rgba_buffer, int src_stride, bool bottom
         for (int y = 0; y < height; ++y) {
             auto *src_row = src_base + static_cast<size_t>(height - 1 - y) * static_cast<size_t>(src_stride);
             auto *dst_row = dst_base + static_cast<size_t>(y) * static_cast<size_t>(queued_frame->linesize[0]);
-            const auto row_copy_err = cudaMemcpy(dst_row, src_row, row_bytes, cudaMemcpyDeviceToDevice);
+            const auto row_copy_err = use_async_stream
+                                          ? cudaMemcpyAsync(dst_row, src_row, row_bytes, cudaMemcpyDeviceToDevice, stream)
+                                          : cudaMemcpy(dst_row, src_row, row_bytes, cudaMemcpyDeviceToDevice);
             if (row_copy_err != cudaSuccess) {
                 std::cerr << "Writer: cudaMemcpy row upload failed: " << cudaGetErrorString(row_copy_err) << "\n";
                 releaseFrame(queued_frame);
                 return false;
             }
+        }
+    }
+    // Single synchronisation point — NVENC requires the data to be ready when
+    // avcodec_send_frame() reads it, and the encoder thread is decoupled by
+    // the queue so this sync only serialises this one producer call.
+    if (use_async_stream) {
+        const auto sync_err = cudaStreamSynchronize(stream);
+        if (sync_err != cudaSuccess) {
+            std::cerr << "Writer: cudaStreamSynchronize failed: " << cudaGetErrorString(sync_err) << "\n";
+            releaseFrame(queued_frame);
+            return false;
         }
     }
 #else
@@ -1232,7 +1283,11 @@ bool Writer::write_cuda_rgba(void *cuda_rgba_buffer, int src_stride, bool bottom
                 std::cerr << "Writer: dropped " << drop_counter << " frames (encoder queue full)\n";
             }
             releaseFrame(queued_frame);
-            return false;
+            // Return TRUE so the producer does NOT fall back to the slow CPU
+            // write() path — we already "handled" the frame (by dropping it).
+            // Falling back would double-process every frame and double the drops.
+            queue_cv.notify_one();
+            return true;
         }
         queued_frame->pts = frame_count++;
         encode_queue.push(queued_frame);
@@ -1353,6 +1408,11 @@ void Writer::encodeAndWriteFrame(AVFrame *in_frame) {
     }
 
     int ret = avcodec_send_frame(codec_ctx, encode_frame);
+    if (ret == AVERROR(EAGAIN)) {
+        // Encoder output queue is full; drain and retry this frame once.
+        drainEncoderPackets();
+        ret = avcodec_send_frame(codec_ctx, encode_frame);
+    }
     if (ret < 0) {
         std::cerr << "Writer: error sending frame to encoder: " << ret << "\n";
         return;
@@ -1382,7 +1442,7 @@ void Writer::encodeLoop(std::stop_token stop_token) {
 
         encodeAndWriteFrame(frame);
         releaseFrame(frame);
-    }
+    };
 
     if (codec_ctx) {
         const int flush_ret = avcodec_send_frame(codec_ctx, nullptr);
@@ -1416,6 +1476,14 @@ void Writer::close() {
     av_frame_free(&frame10);
     sws_freeContext(sws_ctx);
     av_frame_free(&upload_sw_frame);
+#ifdef MXWRITE_HAS_CUDA_COPY
+    // Destroy stream before tearing down FFmpeg CUDA device/frames contexts.
+    if (cuda_upload_stream) {
+        cudaStreamSynchronize(cuda_upload_stream);
+        cudaStreamDestroy(cuda_upload_stream);
+        cuda_upload_stream = nullptr;
+    }
+#endif
     avcodec_free_context(&codec_ctx);
     av_buffer_unref(&hw_frames_ctx);
     av_buffer_unref(&hw_device_ctx);

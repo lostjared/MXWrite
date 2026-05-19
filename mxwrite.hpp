@@ -19,6 +19,9 @@ extern "C" {
 #include <thread>
 #include <vector>
 #include <cstdint>
+#ifdef MXWRITE_HAS_CUDA_COPY
+#include <cuda_runtime.h>
+#endif
 
 struct Frame_Data {
     void *data;
@@ -139,6 +142,11 @@ class Writer {
     AVBufferRef *hw_device_ctx = nullptr;
     AVBufferRef *hw_frames_ctx = nullptr;
     bool use_hw_encode = false;
+#ifdef MXWRITE_HAS_CUDA_COPY
+    // Dedicated stream so the producer's RGBA→hwframe copy does not serialise
+    // with the renderer's default-stream work or with the encoder thread.
+    cudaStream_t cuda_upload_stream = nullptr;
+#endif
     bool hdr_output = false;              ///< True when HDR (HEVC Main10/PQ) output is active.
     EncodeOptions::HdrInfo hdr_info;      ///< HDR metadata captured at open() time.
     SwsContext *sws_ctx = nullptr;
@@ -147,7 +155,9 @@ class Writer {
     std::chrono::steady_clock::time_point recordingStart;
 
     std::queue<AVFrame *> encode_queue;
-    static constexpr size_t MAX_QUEUE_SIZE = 30;
+    // Deep enough to absorb encoder hiccups (~4s at 30fps, ~2s at 60fps).
+    // Memory cost is bounded by the NVENC frame pool / sw RGBA frame buffer.
+    static constexpr size_t MAX_QUEUE_SIZE = 120;
     std::condition_variable queue_cv;
     std::jthread encode_thread;
 
