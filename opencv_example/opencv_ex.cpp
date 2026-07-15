@@ -41,12 +41,14 @@ int main(int argc, char **argv) {
               << "fps\n";
 
     mx::Writer writer;
+    mx::EncodeOptions options;
+    options.crf = 24;
     bool status;
 
     if (mode == 0)
-        status = writer.open("output.mp4", width, height, fps, "24");
+        status = writer.open("output.mp4", width, height, fps, options);
     else if (mode == 1)
-        status = writer.open_ts("output.mp4", width, height, fps, "24");
+        status = writer.open_ts("output.mp4", width, height, fps, options);
 
     if (!status) {
         std::cerr << "Failed to open file for writing\n";
