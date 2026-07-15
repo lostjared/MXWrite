@@ -167,10 +167,10 @@ endif()
 target_link_libraries(mxwrite PUBLIC PkgConfig::FFMPEG Threads::Threads)
 
 if(CUDAToolkit_FOUND)
-    # PUBLIC: this define changes the layout of class Writer (adds the
+    # PUBLIC: this define changes the layout of class mx::Writer (adds the
     # cuda_upload_stream member) via the #ifdef in mxwrite.hpp. Every
     # translation unit that includes mxwrite.hpp MUST agree on the
-    # definition, otherwise sizeof(Writer) and member offsets differ
+    # definition, otherwise sizeof(mx::Writer) and member offsets differ
     # between TUs (ODR violation -> silent heap corruption, e.g. a
     # garbage encode_queue.size() of ~SIZE_MAX in the producer thread).
     target_compile_definitions(mxwrite PUBLIC MXWRITE_HAS_CUDA_COPY=1)

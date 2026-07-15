@@ -1,6 +1,6 @@
 # MXWrite
 
-MXWrite is a small C++20 static library for encoding tightly packed RGBA frames with FFmpeg. It provides a single `Writer` class, performs encoding on a background thread, and lets FFmpeg select the output container from the filename extension.
+MXWrite is a small C++20 static library for encoding tightly packed RGBA frames with FFmpeg. It provides a single `mx::Writer` class, performs encoding on a background thread, and lets FFmpeg select the output container from the filename extension. The public API is contained in the `mx` namespace.
 
 The library supports:
 
@@ -72,13 +72,13 @@ int main() {
     constexpr int height = 720;
     constexpr float fps = 30.0F;
 
-    EncodeOptions options;
+    mx::EncodeOptions options;
     options.codec = "auto";
     options.preset = "medium";
     options.crf = 23;
     options.block_when_full = true;
 
-    Writer writer;
+    mx::Writer writer;
     if (!writer.open("output.mp4", width, height, fps, options)) {
         return 1;
     }
@@ -102,11 +102,11 @@ The legacy overload is also available:
 writer.open("output.mp4", 1280, 720, 30.0F, "23");
 ```
 
-It uses the requested CRF with the library's legacy ultrafast, zero-latency settings. Prefer `EncodeOptions` in new code.
+It uses the requested CRF with the library's legacy ultrafast, zero-latency settings. Prefer `mx::EncodeOptions` in new code.
 
 ## Encoder options
 
-`EncodeOptions` has the following defaults:
+`mx::EncodeOptions` has the following defaults:
 
 | Field | Default | Description |
 | --- | --- | --- |
@@ -127,7 +127,7 @@ Accepted `codec` values are:
 
 In automatic and generic NVENC modes, MXWrite selects H.264 through 3840x2160 and HEVC when either dimension exceeds that limit. `is_hardware_encode()` reports which backend was actually opened.
 
-Encoding uses a bounded queue of 120 frames. By default a full queue drops new frames to keep live producers responsive. Set `block_when_full` in `EncodeOptions`, or call `set_block_when_full(true)`, for batch jobs where every submitted frame must be retained. `close()` waits for accepted frames to finish encoding.
+Encoding uses a bounded queue of 120 frames. By default a full queue drops new frames to keep live producers responsive. Set `block_when_full` in `mx::EncodeOptions`, or call `set_block_when_full(true)`, for batch jobs where every submitted frame must be retained. `close()` waits for accepted frames to finish encoding.
 
 ## Timestamp-named API
 
@@ -163,15 +163,15 @@ Two input paths are available:
 - `write(rgba8)` treats RGBA8 as sRGB/BT.709 SDR and maps it to a 100-nit reference level inside the HDR signal.
 - `write_hdr_rgba16(rgba16)` accepts tightly packed little-endian RGBA16 that is already in BT.2020 primaries and already PQ- or HLG-encoded.
 
-The nested `EncodeOptions::HdrInfo` fields can override the FFmpeg color properties and carry raw mastering-display or content-light side-data payloads. Setting `color_trc` to FFmpeg's `AVCOL_TRC_ARIB_STD_B67` selects HLG signaling; otherwise the default is PQ.
+The nested `mx::EncodeOptions::HdrInfo` fields can override the FFmpeg color properties and carry raw mastering-display or content-light side-data payloads. Setting `color_trc` to FFmpeg's `AVCOL_TRC_ARIB_STD_B67` selects HLG signaling; otherwise the default is PQ.
 
 ## Audio remuxing
 
-MXWrite writes video only. After closing the writer, `transfer_audio()` can replace the destination file with a remuxed copy containing its video stream and the first audio stream from another media file:
+MXWrite writes video only. After closing the writer, `mx::transfer_audio()` can replace the destination file with a remuxed copy containing its video stream and the first audio stream from another media file:
 
 ```cpp
 writer.close();
-transfer_audio("source-with-audio.mp4", "output.mp4");
+mx::transfer_audio("source-with-audio.mp4", "output.mp4");
 ```
 
 The audio is stream-copied rather than re-encoded and is trimmed to the video duration. The function reports errors to standard error and does not return a status value. Keep a backup if replacing the destination file would be risky.
@@ -182,7 +182,7 @@ The audio is stream-copied rather than re-encoded and is trimmed to the video du
 - `is_hardware_encode()` reports whether the active encoder uses NVENC.
 - `get_frame_count()` returns the number of frames accepted into the encode queue.
 - `get_duration()` returns the best available encoded duration in seconds, including a cached duration after `close()`.
-- Destroying an open `Writer` closes and finalizes it automatically; an explicit `close()` is still recommended so errors and lifecycle are clear.
+- Destroying an open `mx::Writer` closes and finalizes it automatically; an explicit `close()` is still recommended so errors and lifecycle are clear.
 
 ## OpenCV example
 
