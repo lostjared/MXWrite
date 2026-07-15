@@ -196,7 +196,7 @@ configure_package_config_file(
 )
 
 install(FILES mxwrite.hpp
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/MXWrite)
 install(TARGETS mxwrite
     EXPORT MXWriteTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})

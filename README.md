@@ -48,6 +48,8 @@ cmake --install build --prefix /path/to/prefix
 
 This builds the `mxwrite` static library. If CMake finds the CUDA Toolkit, device-frame ingestion is enabled automatically and the required compile definition and CUDA runtime dependency are exported with the CMake target.
 
+The public header is installed as `include/MXWrite/mxwrite.hpp` beneath the selected prefix.
+
 To consume an installed copy from another CMake project:
 
 ```cmake
@@ -60,7 +62,7 @@ If MXWrite was installed to a nonstandard prefix, configure the consuming projec
 ## Quick start
 
 ```cpp
-#include <mxwrite.hpp>
+#include <MXWrite/mxwrite.hpp>
 
 #include <cstdint>
 #include <vector>
