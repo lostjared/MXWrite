@@ -13,7 +13,7 @@ if(APPLE)
     else()
         set(HOMEBREW_PREFIX "/usr/local" CACHE PATH "Homebrew prefix for Intel")
     endif()
-    
+
     # If not explicitly set, try to detect
     if(NOT DEFINED HOMEBREW_PREFIX OR HOMEBREW_PREFIX STREQUAL "")
         execute_process(
@@ -23,7 +23,7 @@ if(APPLE)
             ERROR_QUIET
         )
     endif()
-    
+
     if(HOMEBREW_PREFIX)
         message(STATUS "Using Homebrew prefix: ${HOMEBREW_PREFIX}")
         list(APPEND CMAKE_PREFIX_PATH "${HOMEBREW_PREFIX}")
@@ -45,7 +45,7 @@ pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
 
 if(NOT FFMPEG_FOUND)
     message(STATUS "FFmpeg not found via pkg-config, attempting manual search...")
-    
+
     if(APPLE AND HOMEBREW_PREFIX)
         # Search in Homebrew directories
         find_path(FFMPEG_INCLUDE_DIR libavcodec/avcodec.h
@@ -68,7 +68,7 @@ if(NOT FFMPEG_FOUND)
             HINTS "${HOMEBREW_PREFIX}/lib"
             NO_DEFAULT_PATH
         )
-        
+
         if(FFMPEG_INCLUDE_DIR AND AVCODEC_LIBRARY AND AVFORMAT_LIBRARY AND AVUTIL_LIBRARY AND SWSCALE_LIBRARY)
             set(FFMPEG_FOUND TRUE)
             set(FFMPEG_INCLUDE_DIRS "${FFMPEG_INCLUDE_DIR}")
@@ -76,7 +76,7 @@ if(NOT FFMPEG_FOUND)
             message(STATUS "Found FFmpeg in Homebrew: ${HOMEBREW_PREFIX}")
         endif()
     endif()
-    
+
     if(NOT FFMPEG_FOUND)
         message(FATAL_ERROR "FFmpeg libraries not found. Please install FFmpeg: brew install ffmpeg")
     endif()
@@ -154,7 +154,7 @@ message(STATUS "  Include directories: ${FFMPEG_INCLUDE_DIRS}")
 message(STATUS "  Library directories: ${FFMPEG_LIBRARY_DIRS}")
 
 add_library(mxwrite STATIC mxwrite.cpp)
-target_include_directories(mxwrite PUBLIC 
+target_include_directories(mxwrite PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     ${FFMPEG_INCLUDE_DIRS}
@@ -167,10 +167,10 @@ endif()
 target_link_libraries(mxwrite PUBLIC PkgConfig::FFMPEG Threads::Threads)
 
 if(CUDAToolkit_FOUND)
-    # PUBLIC: this define changes the layout of class mx::Writer (adds the
+    # PUBLIC: this define changes the layout of class Writer (adds the
     # cuda_upload_stream member) via the #ifdef in mxwrite.hpp. Every
     # translation unit that includes mxwrite.hpp MUST agree on the
-    # definition, otherwise sizeof(mx::Writer) and member offsets differ
+    # definition, otherwise sizeof(Writer) and member offsets differ
     # between TUs (ODR violation -> silent heap corruption, e.g. a
     # garbage encode_queue.size() of ~SIZE_MAX in the producer thread).
     target_compile_definitions(mxwrite PUBLIC MXWRITE_HAS_CUDA_COPY=1)
@@ -196,12 +196,12 @@ configure_package_config_file(
 )
 
 install(FILES mxwrite.hpp
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/MXWrite)
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(TARGETS mxwrite
     EXPORT MXWriteTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
-install(FILES 
+install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/MXWriteConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/MXWriteConfigVersion.cmake"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/MXWrite
@@ -216,3 +216,14 @@ export(EXPORT MXWriteTargets
     NAMESPACE MXWrite::
     FILE "${CMAKE_CURRENT_BINARY_DIR}/MXWriteTargets.cmake"
 )
+
+if((CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR) AND NOT TARGET uninstall)
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+        IMMEDIATE @ONLY
+    )
+    add_custom_target(uninstall
+        COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+    )
+endif()

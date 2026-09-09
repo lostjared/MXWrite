@@ -27,89 +27,79 @@ extern "C" {
 #include <cuda_runtime.h>
 #endif
 
-namespace mx {
+/**
+ * @brief Queue entry that stores a frame pointer and its capture timestamp.
+ */
+struct Frame_Data {
+    void *data;                                         ///< Pointer to RGBA frame data owned by the producer.
+    std::chrono::steady_clock::time_point capture_time; ///< Capture time for timestamp-based encoding.
+};
 
-  /**
-   * @brief Queue entry that stores a frame pointer and its capture timestamp.
-   */
-  struct Frame_Data {
-    void *data; ///< Pointer to RGBA frame data owned by the producer.
-    std::chrono::steady_clock::time_point
-        capture_time; ///< Capture time for timestamp-based encoding.
-  };
+/** @brief A video encoder reported by the linked FFmpeg installation. */
+struct EncoderInfo {
+    std::string name;          ///< Exact libavcodec encoder name (for example, libx265).
+    std::string long_name;     ///< Human-readable encoder description.
+    std::string codec_name;    ///< Encoded format name (for example, hevc or av1).
+    std::string pixel_formats; ///< Comma-separated supported input pixel formats.
+    bool hardware = false;     ///< True for hardware or hybrid encoders.
+    bool experimental = false; ///< True when FFmpeg marks the encoder experimental.
+};
 
-  /** @brief A video encoder reported by the linked FFmpeg installation. */
-  struct EncoderInfo {
-    std::string name; ///< Exact libavcodec encoder name (for example, libx265).
-    std::string long_name;  ///< Human-readable encoder description.
-    std::string codec_name; ///< Encoded format name (for example, hevc or av1).
-    std::string
-        pixel_formats;     ///< Comma-separated supported input pixel formats.
-    bool hardware = false; ///< True for hardware or hybrid encoders.
-    bool experimental =
-        false; ///< True when FFmpeg marks the encoder experimental.
-  };
+/** @brief One configurable AVOption exposed by a video encoder. */
+struct EncoderOptionInfo {
+    std::string name;          ///< Option name accepted by EncodeOptions::ffmpeg_options.
+    std::string type;          ///< FFmpeg option type.
+    std::string default_value; ///< Encoder default, when it can be represented as text.
+    std::string minimum;       ///< Minimum value for numeric options.
+    std::string maximum;       ///< Maximum value for numeric options.
+    std::string choices;       ///< Comma-separated named values for enum-like options.
+    std::string help;          ///< Human-readable FFmpeg option description.
+};
 
-  /** @brief One configurable AVOption exposed by a video encoder. */
-  struct EncoderOptionInfo {
-    std::string
-        name; ///< Option name accepted by EncodeOptions::ffmpeg_options.
-    std::string type; ///< FFmpeg option type.
-    std::string
-        default_value; ///< Encoder default, when it can be represented as text.
-    std::string minimum; ///< Minimum value for numeric options.
-    std::string maximum; ///< Maximum value for numeric options.
-    std::string
-        choices;      ///< Comma-separated named values for enum-like options.
-    std::string help; ///< Human-readable FFmpeg option description.
-  };
+/** @return Video encoders registered by the linked FFmpeg libraries. */
+std::vector<EncoderInfo> available_video_encoders();
 
-  /** @return Video encoders registered by the linked FFmpeg libraries. */
-  std::vector<EncoderInfo> available_video_encoders();
+/**
+ * @brief Return the options exposed by one registered video encoder.
+ * @param encoder_name Exact encoder name returned by available_video_encoders().
+ */
+std::vector<EncoderOptionInfo> video_encoder_options(std::string_view encoder_name);
 
-  /**
-   * @brief Return the options exposed by one registered video encoder.
-   * @param encoder_name Exact encoder name returned by
-   * available_video_encoders().
-   */
-  std::vector<EncoderOptionInfo> video_encoder_options(
-      std::string_view encoder_name);
-
-  /**
-   * @brief User-configurable video encoder quality options.
-   *
-   * preset: x264 preset name — ultrafast, superfast, veryfast, faster, fast,
-   *         medium, slow, slower, veryslow. Mapped to NVENC p1..p7.
-   * tune:   Software tune, or NVENC hq, uhq, ll, ull, or lossless. Empty uses
-   *         the encoder default (NVENC hq).
-   * crf:    Constant Rate Factor, 0 (lossless) .. 51 (worst). 18 is visually
-   *         near-lossless; 23 is default for x264; 28 is typical "small file".
-   *         For NVENC this is forwarded as `cq`.
-   * codec:  "auto" (NVENC if available, else software), "software" (force
-   * software), "nvenc" (force resolution-selected NVENC), or any exact video
-   * encoder name registered by FFmpeg, such as "libx264", "libx265",
-   * "libsvtav1", "h264_qsv", or "hevc_vaapi". NVENC policy requests fall back
-   * to the matching software codec. ffmpeg_options: Additional FFmpeg-style
-   * video encoder options, for example
-   *         "-preset p6 -tune lossless -profile:v rext -pix_fmt yuv444p".
-   *         These options override the corresponding built-in settings. MXWrite
-   *         uses libavcodec directly, so input/output filenames are not
-   * accepted. realtime: when true, applies low-latency defaults
-   * (tune=zerolatency for x264, tune=ll + zerolatency=1 for NVENC). Extra
-   * options may override them. block_when_full: when true, producer threads
-   * block if the encoder queue is full instead of dropping frames.
-   */
-  struct EncodeOptions {
+/**
+ * @brief User-configurable video encoder quality options.
+ *
+ * preset: x264 preset name — ultrafast, superfast, veryfast, faster, fast,
+ *         medium, slow, slower, veryslow. Mapped to NVENC p1..p7.
+ * tune:   Software tune, or NVENC hq, uhq, ll, ull, or lossless. Empty uses
+ *         the encoder default (NVENC hq).
+ * crf:    Constant Rate Factor, 0 (lossless) .. 51 (worst). 18 is visually
+ *         near-lossless; 23 is default for x264; 28 is typical "small file".
+ *         For NVENC this is forwarded as `cq`.
+ * bit_rate: Target video bitrate in bits per second. A positive value selects
+ *         bitrate-based VBR and disables the built-in CRF/CQ setting.
+ * codec:  "auto" (NVENC if available, else software), "software" (force software),
+ *         "nvenc" (force resolution-selected NVENC), or any exact video encoder
+ *         name registered by FFmpeg, such as "libx264", "libx265", "libsvtav1",
+ *         "h264_qsv", or "hevc_vaapi". NVENC policy requests fall back to the
+ *         matching software codec.
+ * ffmpeg_options: Additional FFmpeg-style video encoder options, for example
+ *         "-preset p6 -tune lossless -profile:v rext -pix_fmt yuv444p".
+ *         These options override the corresponding built-in settings. MXWrite
+ *         uses libavcodec directly, so input/output filenames are not accepted.
+ * realtime: when true, applies low-latency defaults (tune=zerolatency for x264,
+ *           tune=ll + zerolatency=1 for NVENC). Extra options may override them.
+ * block_when_full: when true, producer threads block if the encoder queue is
+ *                  full instead of dropping frames.
+ */
+struct EncodeOptions {
     std::string preset = "medium"; ///< Encoder preset name.
     std::string tune = "";         ///< Optional tuning mode.
     int crf = 18;                  ///< Constant Rate Factor.
-    std::string codec =
-        "auto"; ///< Encoder selection policy or exact FFmpeg encoder name.
-    std::string
-        ffmpeg_options;    ///< Additional FFmpeg-style video encoder options.
-    bool realtime = false; ///< Enable low-latency settings.
-    bool block_when_full = false; ///< Pace producers to encoder throughput
-                                  ///< instead of dropping frames.
+    std::int64_t bit_rate = 0;     ///< Target bits/second; 0 selects CRF/CQ.
+    std::string codec = "auto";    ///< Encoder selection policy or exact FFmpeg encoder name.
+    std::string ffmpeg_options;    ///< Additional FFmpeg-style video encoder options.
+    bool realtime = false;         ///< Enable low-latency settings.
+    bool block_when_full = false;  ///< Pace producers to encoder throughput instead of dropping frames.
 
     /**
      * @brief HDR output options.
@@ -119,37 +109,37 @@ namespace mx {
      *  - Encodes with libx265 at 10-bit (AV_PIX_FMT_YUV420P10LE).
      *  - Tags the stream with BT.2020 primaries, BT.2020 non-constant luminance
      *    matrix, and SMPTE ST.2084 (PQ) transfer.
-     *  - Converts incoming 8-bit sRGB RGBA shader output into PQ-encoded
-     *    10-bit YUV, placing SDR-range content at the 100-nit reference level
-     *    inside the PQ signal (SDR-in-HDR-container).
+     *  - Accepts already-PQ/HLG-encoded BT.2020 RGBA16 through the dedicated
+     *    HDR write methods and converts it directly to 10-bit YUV.
+     *  - Retains an RGBA8 compatibility path that places SDR-range content at
+     *    the 100-nit reference level inside a PQ signal.
      *  - Copies @ref mastering_display and @ref content_light side data from
      *    the input stream when provided, so player HDR metadata is preserved.
      *
-     * This mode is intended for use when the *input* video is HDR; the 8-bit
-     * GL pipeline cannot reconstruct the original highlight precision, but the
-     * resulting file is a correctly-tagged HDR container.
+     * This mode is intended for HDR render pipelines and preserves their
+     * 16-bit encoded signal through the RGB-to-YUV conversion.
      */
     struct HdrInfo {
-      bool enabled = false;    ///< Enables the HDR output path.
-      int color_primaries = 0; ///< AVColorPrimaries value.
-      int color_trc = 0;       ///< AVColorTransferCharacteristic value.
-      int color_space = 0;     ///< AVColorSpace value.
-      int color_range = 0;     ///< AVColorRange value.
-      /// Raw AVMasteringDisplayMetadata side-data bytes, or empty.
-      std::vector<uint8_t> mastering_display;
-      /// Raw AVContentLightMetadata side-data bytes, or empty.
-      std::vector<uint8_t> content_light;
+        bool enabled = false;    ///< Enables the HDR output path.
+        int color_primaries = 0; ///< AVColorPrimaries value.
+        int color_trc = 0;       ///< AVColorTransferCharacteristic value.
+        int color_space = 0;     ///< AVColorSpace value.
+        int color_range = 0;     ///< AVColorRange value.
+        /// Raw AVMasteringDisplayMetadata side-data bytes, or empty.
+        std::vector<uint8_t> mastering_display;
+        /// Raw AVContentLightMetadata side-data bytes, or empty.
+        std::vector<uint8_t> content_light;
     } hdr;
-  };
+};
 
-  /**
-   * @brief FFmpeg-backed RGBA video writer.
-   *
-   * The writer accepts host RGBA buffers, optional CUDA device buffers, and
-   * 16-bit HDR RGBA buffers. It can encode either frame-by-frame or from
-   * timestamped frames, depending on the open mode.
-   */
-  class Writer {
+/**
+ * @brief FFmpeg-backed RGBA video writer.
+ *
+ * The writer accepts host RGBA buffers, optional CUDA device buffers, and
+ * 16-bit HDR RGBA buffers. It can encode either frame-by-frame or from
+ * timestamped frames, depending on the open mode.
+ */
+class Writer {
   public:
     /** @brief Construct a closed writer. */
     Writer() = default;
@@ -163,8 +153,7 @@ namespace mx {
      * @param crf Constant Rate Factor as a string.
      * @return true on success.
      */
-    bool open(const std::string &filename, int width, int height, float fps,
-              const char *crf);
+    bool open(const std::string &filename, int width, int height, float fps, const char *crf);
     /**
      * @brief Open an output file using explicit encoder options.
      * @param filename Output file path.
@@ -174,8 +163,7 @@ namespace mx {
      * @param opts Encoder configuration.
      * @return true on success.
      */
-    bool open(const std::string &filename, int width, int height, float fps,
-              const EncodeOptions &opts);
+    bool open(const std::string &filename, int width, int height, float fps, const EncodeOptions &opts);
     /**
      * @brief Queue a host RGBA frame for immediate-mode encoding.
      * @param rgba_buffer Pointer to tightly packed RGBA8 pixels.
@@ -184,8 +172,7 @@ namespace mx {
     /**
      * @brief Queue a host RGBA frame with an explicit presentation timestamp.
      * @param rgba_buffer Pointer to tightly packed RGBA8 pixels.
-     * @param pts Presentation timestamp in units of the configured frame time
-     * base.
+     * @param pts Presentation timestamp in units of the configured frame time base.
      */
     void write_at_pts(void *rgba_buffer, int64_t pts);
     /**
@@ -204,11 +191,9 @@ namespace mx {
      */
     void write_hdr_rgba16(void *rgba16_buffer);
     /**
-     * @brief Queue a 16-bit HDR RGBA frame with an explicit presentation
-     * timestamp.
+     * @brief Queue a 16-bit HDR RGBA frame with an explicit presentation timestamp.
      * @param rgba16_buffer Pointer to tightly packed RGBA16 pixels.
-     * @param pts Presentation timestamp in units of the configured frame time
-     * base.
+     * @param pts Presentation timestamp in units of the configured frame time base.
      */
     void write_hdr_rgba16_at_pts(void *rgba16_buffer, int64_t pts);
     /**
@@ -218,22 +203,19 @@ namespace mx {
      * @param bottom_up Whether the source is stored bottom-up.
      * @return true if the frame was accepted.
      */
-    bool write_cuda_rgba(void *cuda_rgba_buffer, int src_stride,
-                         bool bottom_up = false);
+    bool write_cuda_rgba(void *cuda_rgba_buffer, int src_stride, bool bottom_up = false);
     /**
      * @brief Queue a CUDA RGBA frame with an explicit presentation timestamp.
      * @param cuda_rgba_buffer CUDA device pointer.
      * @param src_stride Source row pitch in bytes.
-     * @param pts Presentation timestamp in units of the configured frame time
-     * base.
+     * @param pts Presentation timestamp in units of the configured frame time base.
      * @param bottom_up Whether the source is stored bottom-up.
      * @return true if the frame was accepted.
      */
-    bool write_cuda_rgba_at_pts(void *cuda_rgba_buffer, int src_stride,
-                                int64_t pts, bool bottom_up = false);
+    bool write_cuda_rgba_at_pts(void *cuda_rgba_buffer, int src_stride, int64_t pts,
+                                bool bottom_up = false);
     /**
-     * @brief Open a timestamp-based output stream using the legacy CRF string
-     * interface.
+     * @brief Open a timestamp-based output stream using the legacy CRF string interface.
      * @param filename Output file path.
      * @param width Output width in pixels.
      * @param height Output height in pixels.
@@ -241,11 +223,9 @@ namespace mx {
      * @param crf Constant Rate Factor as a string.
      * @return true on success.
      */
-    bool open_ts(const std::string &filename, int width, int height, float fps,
-                 const char *crf);
+    bool open_ts(const std::string &filename, int width, int height, float fps, const char *crf);
     /**
-     * @brief Open a timestamp-based output stream using explicit encoder
-     * options.
+     * @brief Open a timestamp-based output stream using explicit encoder options.
      * @param filename Output file path.
      * @param width Output width in pixels.
      * @param height Output height in pixels.
@@ -253,8 +233,7 @@ namespace mx {
      * @param opts Encoder configuration.
      * @return true on success.
      */
-    bool open_ts(const std::string &filename, int width, int height, float fps,
-                 const EncodeOptions &opts);
+    bool open_ts(const std::string &filename, int width, int height, float fps, const EncodeOptions &opts);
     /**
      * @brief Queue a host RGBA frame using capture timestamps.
      * @param rgba_buffer Pointer to tightly packed RGBA8 pixels.
@@ -264,16 +243,13 @@ namespace mx {
     void close();
     /** @brief Check whether the writer is currently open. */
     bool is_open() const { return opened; }
-    /// @brief True when FFmpeg identifies the active encoder as hardware or
-    /// hybrid.
+    /// @brief True when FFmpeg identifies the active encoder as hardware or hybrid.
     bool is_hardware_encode() const { return active_encoder_hardware; }
     /// @brief If true, keep one pending frame and pace producer threads to the
     /// encoder instead of dropping frames. Intended for headless/batch
-    /// transcoding where every input frame must reach the output. Default:
-    /// false.
+    /// transcoding where every input frame must reach the output. Default: false.
     void set_block_when_full(bool value) { block_when_full = value; }
-    /** @brief Check whether the encoder queue blocks instead of dropping
-     * frames. */
+    /** @brief Check whether the encoder queue blocks instead of dropping frames. */
     bool get_block_when_full() const { return block_when_full; }
     /**
      * @brief Return the output timeline length in nominal frame ticks.
@@ -283,57 +259,52 @@ namespace mx {
      * plus one.
      */
     int64_t get_frame_count() const { return frame_count; }
+    /** @brief Return the current logical byte position of the output muxer. */
+    std::uint64_t get_bytes_written() const {
+        return bytes_written.load(std::memory_order_relaxed);
+    }
     /** @brief Return the encoded duration in seconds. */
     double get_duration() const;
     /** @brief Close the writer on destruction if it is still open. */
     ~Writer() {
-      if (is_open()) {
-        close();
-        opened = false;
-      }
+        if (is_open()) {
+            close();
+            opened = false;
+        }
     }
 
   private:
-    bool opened{false}; ///< Internal open-state flag.
-    int width = 0;      ///< Output width in pixels.
-    int height = 0;     ///< Output height in pixels.
-    int fps_num = 0;    ///< Output FPS numerator.
-    int fps_den = 0;    ///< Output FPS denominator.
-    int64_t frame_count =
-        0; ///< Next sequential PTS / explicit-PTS timeline length.
-    double last_duration = 0.0; ///< Cached duration from the last encode step.
+    bool opened{false};                    ///< Internal open-state flag.
+    int width = 0;                         ///< Output width in pixels.
+    int height = 0;                        ///< Output height in pixels.
+    int fps_num = 0;                       ///< Output FPS numerator.
+    int fps_den = 0;                       ///< Output FPS denominator.
+    int64_t frame_count = 0;               ///< Next sequential PTS / explicit-PTS timeline length.
+    double last_duration = 0.0;            ///< Cached duration from the last encode step.
     AVFormatContext *format_ctx = nullptr; ///< Active container context.
     AVCodecContext *codec_ctx = nullptr;   ///< Active codec context.
     AVStream *stream = nullptr;            ///< Output video stream.
     AVFrame *frameYUV = nullptr;           ///< Software-converted YUV frame.
     AVFrame *frameRGBA = nullptr;          ///< Staging RGBA frame.
-    AVFrame *frame10 = nullptr; ///< YUV420P10LE frame used for HDR output.
-    AVFrame *upload_sw_frame =
-        nullptr; ///< Software upload frame used by CUDA/hardware paths.
-    AVBufferRef *hw_device_ctx =
-        nullptr; ///< Hardware device context, when available.
-    AVBufferRef *hw_frames_ctx =
-        nullptr;                ///< Hardware frames pool, when available.
-    bool use_hw_encode = false; ///< True when hardware encoding is active.
-    bool active_encoder_hardware =
-        false; ///< True when the selected FFmpeg encoder is hardware-backed.
-    bool direct_cuda_upload =
-        false; ///< True when CUDA RGBA frames can be copied without conversion.
+    AVFrame *frame10 = nullptr;            ///< YUV420P10LE frame used for HDR output.
+    AVFrame *upload_sw_frame = nullptr;    ///< Software upload frame used by CUDA/hardware paths.
+    AVBufferRef *hw_device_ctx = nullptr;  ///< Hardware device context, when available.
+    AVBufferRef *hw_frames_ctx = nullptr;  ///< Hardware frames pool, when available.
+    bool use_hw_encode = false;            ///< True when hardware encoding is active.
+    bool active_encoder_hardware = false;  ///< True when the selected FFmpeg encoder is hardware-backed.
+    bool direct_cuda_upload = false;       ///< True when CUDA RGBA frames can be copied without conversion.
 #ifdef MXWRITE_HAS_CUDA_COPY
     // Dedicated stream so the producer's RGBA→hwframe copy does not serialise
     // with the renderer's default-stream work or with the encoder thread.
     cudaStream_t cuda_upload_stream = nullptr;
 #endif
-    bool hdr_output =
-        false; ///< True when HDR (HEVC Main10/PQ) output is active.
+    bool hdr_output = false;         ///< True when HDR (HEVC Main10/PQ) output is active.
     EncodeOptions::HdrInfo hdr_info; ///< HDR metadata captured at open() time.
     SwsContext *sws_ctx = nullptr;   ///< Frame conversion context.
     AVRational time_base;            ///< Stream time base.
-    /** @brief Convert a frame rate into a rational numerator/denominator pair.
-     */
+    /** @brief Convert a frame rate into a rational numerator/denominator pair. */
     void calculateFPSFraction(float fps, int &fps_num, int &fps_den);
-    std::chrono::steady_clock::time_point
-        recordingStart; ///< Start time for timestamp mode.
+    std::chrono::steady_clock::time_point recordingStart; ///< Start time for timestamp mode.
 
     std::queue<AVFrame *> encode_queue; ///< Pending encoded frames.
     // Deep enough to absorb encoder hiccups (~4s at 30fps, ~2s at 60fps).
@@ -346,18 +317,16 @@ namespace mx {
     std::condition_variable queue_cv; ///< Signals queue availability.
     std::jthread encode_thread;       ///< Background encoder thread.
 
-    std::mutex queue_mutex{};    ///< Guards the frame queue.
-    std::mutex writer_mutex{};   ///< Guards writer state transitions.
-    bool stop_requested = false; ///< Signals encoder shutdown.
-    std::atomic<bool> block_when_full{false}; ///< Queue backpressure mode.
+    std::mutex queue_mutex{};                    ///< Guards the frame queue.
+    std::mutex writer_mutex{};                   ///< Guards writer state transitions.
+    bool stop_requested = false;                 ///< Signals encoder shutdown.
+    std::atomic<bool> block_when_full{false};    ///< Queue backpressure mode.
+    std::atomic<std::uint64_t> bytes_written{0}; ///< Logical output bytes accepted by FFmpeg.
 
     /** @brief Shared implementation for open() and open_ts(). */
-    bool openInternal(const std::string &filename, int w, int h, float fps,
-                      const EncodeOptions &opts, bool ts_mode);
-    /** @brief Initialize an FFmpeg hardware device and frame pool for an
-     * encoder. */
-    bool initHardwareEncoding(const AVCodec *codec,
-                              AVPixelFormat requested_format,
+    bool openInternal(const std::string &filename, int w, int h, float fps, const EncodeOptions &opts, bool ts_mode);
+    /** @brief Initialize an FFmpeg hardware device and frame pool for an encoder. */
+    bool initHardwareEncoding(const AVCodec *codec, AVPixelFormat requested_format,
                               bool prefer_cuda_rgba);
     /** @brief Start the background encoder thread. */
     void startEncoderThread();
@@ -369,26 +338,24 @@ namespace mx {
     void encodeAndWriteFrame(AVFrame *in_frame);
     /** @brief Drain packets from the codec into the container. */
     void drainEncoderPackets();
+    /** @brief Refresh the logical output byte count from FFmpeg. */
+    void updateBytesWritten() noexcept;
     /** @brief Release a frame allocated for the encode queue. */
     void releaseFrame(AVFrame *f);
-  };
+};
 
-  /**
-   * @brief Copy audio from one video file to another.
-   * @param sourceAudioFile Input media file containing the audio stream.
-   * @param destVideoFile Output video file to receive the audio stream.
-   */
-  extern void transfer_audio(std::string_view sourceAudioFile,
-                             std::string_view destVideoFile);
-  /**
-   * @brief Free FFmpeg format contexts used during transfer operations.
-   * @param source_ctx Source format context.
-   * @param dest_ctx Destination format context.
-   * @param output_ctx Output format context.
-   */
-  extern void cleanup_contexts(AVFormatContext * source_ctx,
-                               AVFormatContext * dest_ctx,
-                               AVFormatContext * output_ctx);
-}
+/**
+ * @brief Copy audio from one video file to another.
+ * @param sourceAudioFile Input media file containing the audio stream.
+ * @param destVideoFile Output video file to receive the audio stream.
+ */
+extern void transfer_audio(std::string_view sourceAudioFile, std::string_view destVideoFile);
+/**
+ * @brief Free FFmpeg format contexts used during transfer operations.
+ * @param source_ctx Source format context.
+ * @param dest_ctx Destination format context.
+ * @param output_ctx Output format context.
+ */
+extern void cleanup_contexts(AVFormatContext *source_ctx, AVFormatContext *dest_ctx, AVFormatContext *output_ctx);
 
 #endif
