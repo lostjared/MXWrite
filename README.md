@@ -380,4 +380,4 @@ The first argument is the camera index. The second is `0` for normal mode or
 ## License
 
 MXWrite is part of the Acid Cam project and is distributed under the repository's
-BSD 2-Clause License.
+License.
