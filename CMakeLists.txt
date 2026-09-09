@@ -4,6 +4,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(GNUInstallDirs)
 include(CheckIncludeFileCXX)
+option(SHARED "Build MXWrite as a shared library" OFF)
 
 # Homebrew support for Intel and Apple Silicon
 if(APPLE)
@@ -153,7 +154,17 @@ message(STATUS "  libswscale version: ${FFMPEG_libswscale_VERSION}")
 message(STATUS "  Include directories: ${FFMPEG_INCLUDE_DIRS}")
 message(STATUS "  Library directories: ${FFMPEG_LIBRARY_DIRS}")
 
-add_library(mxwrite STATIC mxwrite.cpp)
+if(SHARED)
+    set(MXWRITE_LIBRARY_TYPE SHARED)
+else()
+    set(MXWRITE_LIBRARY_TYPE STATIC)
+endif()
+
+add_library(mxwrite ${MXWRITE_LIBRARY_TYPE} mxwrite.cpp)
+if(WIN32 AND SHARED)
+    set_target_properties(mxwrite PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
+message(STATUS "MXWrite library type: ${MXWRITE_LIBRARY_TYPE}")
 target_include_directories(mxwrite PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
@@ -189,6 +200,7 @@ write_basic_package_version_file(
     COMPATIBILITY AnyNewerVersion
 )
 
+set(MXWRITE_CONFIG_WITH_CUDA ${CUDAToolkit_FOUND})
 configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/MXWriteConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/MXWriteConfig.cmake"
@@ -199,7 +211,9 @@ install(FILES mxwrite.hpp
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(TARGETS mxwrite
     EXPORT MXWriteTargets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/MXWriteConfig.cmake"

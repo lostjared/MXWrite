@@ -65,6 +65,21 @@ cmake --build build/mxwrite --parallel
 cmake --install build/mxwrite
 ```
 
+MXWrite builds as a static library by default. To build a shared library
+instead, configure with `-DSHARED=ON`:
+
+```bash
+cmake -S MXWrite -B build/mxwrite-shared \
+    -DCMAKE_BUILD_TYPE=Release -DSHARED=ON
+cmake --build build/mxwrite-shared --parallel
+cmake --install build/mxwrite-shared
+```
+
+Use `-DSHARED=OFF`, or omit the option, for the default static library. Shared
+builds install the `.so` or `.dylib` into the library directory. On Windows,
+the DLL is installed into the binary directory and its import library into the
+library directory.
+
 CMake automatically enables `MXWRITE_HAS_CUDA_COPY` when it finds the CUDA
 Toolkit. This definition changes the layout of `Writer`, so every translation
 unit using `mxwrite.hpp` must receive the same definition as the library. The

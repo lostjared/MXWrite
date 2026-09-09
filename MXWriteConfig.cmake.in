@@ -2,6 +2,9 @@
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
 find_dependency(PkgConfig)
+if(@MXWRITE_CONFIG_WITH_CUDA@)
+    find_dependency(CUDAToolkit)
+endif()
 
 if(NOT TARGET PkgConfig::FFMPEG)
     pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
