@@ -1,0 +1,25 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "nanobind>=2.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "mxwrite"
+version = "0.1.0"
+description = "Python bindings for MXWrite FFmpeg video writer"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = ["numpy>=1.21"]
+
+[project.urls]
+Homepage = "https://github.com/lostjared/acidcam-gpu"
+Repository = "https://github.com/lostjared/acidcam-gpu"
+
+[tool.scikit-build]
+cmake.version = ">=3.15"
+cmake.build-type = "Release"
+wheel.packages = []
+
+[tool.scikit-build.cmake.define]
+PYTHON_MODULE = "ON"
+SHARED = "OFF"
+MXWRITE_PYTHON_INSTALL_DIR = "."

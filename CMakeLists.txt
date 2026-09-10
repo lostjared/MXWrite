@@ -224,7 +224,7 @@ if(PYTHON_MODULE)
 
     set(MXWRITE_PYTHON_INSTALL_DIR
         "${CMAKE_INSTALL_LIBDIR}/python${Python_VERSION_MAJOR}.${Python_VERSION_MINOR}/site-packages"
-        CACHE PATH "Install directory for the MXWrite Python module"
+        CACHE STRING "Install directory for the MXWrite Python module"
     )
     install(TARGETS mxwrite_ext
         LIBRARY DESTINATION "${MXWRITE_PYTHON_INSTALL_DIR}"

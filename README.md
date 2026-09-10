@@ -124,6 +124,18 @@ PYTHONPATH=build/mxwrite-python \
 Pass `--explicit-pts` to exercise `open_ts()` and `write_at_pts()`. Use
 `--help` to see the resolution, frame-rate, encoder, preset, and CRF options.
 
+MXWrite can also be built and installed directly through pip from the
+repository checkout. The FFmpeg development packages listed above must already
+be installed because pip does not provide those native system libraries:
+
+```bash
+python3 -m pip install ./MXWrite
+python3 -c "import mxwrite_ext; print(len(mxwrite_ext.available_video_encoders()))"
+```
+
+The pip build uses scikit-build-core to invoke CMake, enables the nanobind
+module automatically, and installs NumPy as its runtime dependency.
+
 CMake automatically enables `MXWRITE_HAS_CUDA_COPY` when it finds the CUDA
 Toolkit. This definition changes the layout of `Writer`, so every translation
 unit using `mxwrite.hpp` must receive the same definition as the library. The
