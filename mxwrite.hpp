@@ -212,8 +212,7 @@ class Writer {
      * @param bottom_up Whether the source is stored bottom-up.
      * @return true if the frame was accepted.
      */
-    bool write_cuda_rgba_at_pts(void *cuda_rgba_buffer, int src_stride, int64_t pts,
-                                bool bottom_up = false);
+    bool write_cuda_rgba_at_pts(void *cuda_rgba_buffer, int src_stride, int64_t pts, bool bottom_up = false);
     /**
      * @brief Open a timestamp-based output stream using the legacy CRF string interface.
      * @param filename Output file path.
@@ -260,9 +259,7 @@ class Writer {
      */
     int64_t get_frame_count() const { return frame_count; }
     /** @brief Return the current logical byte position of the output muxer. */
-    std::uint64_t get_bytes_written() const {
-        return bytes_written.load(std::memory_order_relaxed);
-    }
+    std::uint64_t get_bytes_written() const { return bytes_written.load(std::memory_order_relaxed); }
     /** @brief Return the encoded duration in seconds. */
     double get_duration() const;
     /** @brief Close the writer on destruction if it is still open. */
@@ -326,8 +323,7 @@ class Writer {
     /** @brief Shared implementation for open() and open_ts(). */
     bool openInternal(const std::string &filename, int w, int h, float fps, const EncodeOptions &opts, bool ts_mode);
     /** @brief Initialize an FFmpeg hardware device and frame pool for an encoder. */
-    bool initHardwareEncoding(const AVCodec *codec, AVPixelFormat requested_format,
-                              bool prefer_cuda_rgba);
+    bool initHardwareEncoding(const AVCodec *codec, AVPixelFormat requested_format, bool prefer_cuda_rgba);
     /** @brief Start the background encoder thread. */
     void startEncoderThread();
     /** @brief Stop the background encoder thread. */
