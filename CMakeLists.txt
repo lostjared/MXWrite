@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(GNUInstallDirs)
 include(CheckIncludeFileCXX)
 option(SHARED "Build MXWrite as a shared library" OFF)
+option(PYTHON_MODULE "Build the MXWrite nanobind Python module" OFF)
 
 # Homebrew support for Intel and Apple Silicon
 if(APPLE)
@@ -192,6 +193,61 @@ else()
 endif()
 
 target_compile_options(mxwrite PRIVATE -O3 -Wall -Wextra -pedantic)
+
+if(PYTHON_MODULE)
+    if(CMAKE_VERSION VERSION_LESS 3.15)
+        message(FATAL_ERROR "PYTHON_MODULE requires CMake 3.15 or newer")
+    endif()
+
+    find_package(Python 3.8 COMPONENTS Interpreter Development.Module REQUIRED)
+    find_package(nanobind CONFIG QUIET)
+    if(NOT nanobind_FOUND)
+        execute_process(
+            COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
+            RESULT_VARIABLE NANOBIND_CMAKE_DIR_RESULT
+            OUTPUT_VARIABLE NANOBIND_CMAKE_DIR
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        if(NOT NANOBIND_CMAKE_DIR_RESULT EQUAL 0 OR NANOBIND_CMAKE_DIR STREQUAL "")
+            message(FATAL_ERROR
+                "PYTHON_MODULE requires nanobind for ${Python_EXECUTABLE}. "
+                "Install it with: ${Python_EXECUTABLE} -m pip install nanobind"
+            )
+        endif()
+        find_package(nanobind CONFIG REQUIRED PATHS "${NANOBIND_CMAKE_DIR}" NO_DEFAULT_PATH)
+    endif()
+
+    set_target_properties(mxwrite PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    nanobind_add_module(mxwrite_ext mxwrite_nanobind.cpp)
+    target_link_libraries(mxwrite_ext PRIVATE mxwrite)
+
+    set(MXWRITE_PYTHON_INSTALL_DIR
+        "${CMAKE_INSTALL_LIBDIR}/python${Python_VERSION_MAJOR}.${Python_VERSION_MINOR}/site-packages"
+        CACHE PATH "Install directory for the MXWrite Python module"
+    )
+    install(TARGETS mxwrite_ext
+        LIBRARY DESTINATION "${MXWRITE_PYTHON_INSTALL_DIR}"
+        RUNTIME DESTINATION "${MXWRITE_PYTHON_INSTALL_DIR}"
+    )
+    if(SHARED AND APPLE)
+        set_target_properties(mxwrite_ext PROPERTIES
+            INSTALL_RPATH "@loader_path/../.."
+        )
+    elseif(SHARED AND UNIX)
+        set_target_properties(mxwrite_ext PROPERTIES
+            INSTALL_RPATH "$ORIGIN/../.."
+        )
+    elseif(SHARED AND WIN32)
+        install(TARGETS mxwrite
+            RUNTIME DESTINATION "${MXWRITE_PYTHON_INSTALL_DIR}"
+        )
+    endif()
+    message(STATUS "MXWrite Python module: ENABLED (${Python_EXECUTABLE})")
+else()
+    message(STATUS "MXWrite Python module: DISABLED")
+endif()
+
 include(CMakePackageConfigHelpers)
 
 write_basic_package_version_file(
