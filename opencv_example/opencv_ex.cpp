@@ -1,14 +1,12 @@
-#include <MXWrite/mxwrite.hpp>
 #include <chrono>
 #include <iostream>
+#include <mxwrite.hpp>
 #include <opencv2/opencv.hpp>
 #include <thread>
 
 int main(int argc, char **argv) {
     if (argc != 3) {
-        std::cerr << "Usage: " << argv[0]
-                  << " camera index mode\n0 mode for normal mode, 1, for "
-                     "timestamp mode\n";
+        std::cerr << "Usage: " << argv[0] << " camera index mode\n0 mode for normal mode, 1, for timestamp mode\n";
         return 1;
     }
     int index = std::stoi(argv[1]);
@@ -19,8 +17,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    std::cout << "Initializing Camera: " << index << " mode: " << mode
-              << "...\n";
+    std::cout << "Initializing Camera: " << index << " mode: " << mode << "...\n";
 #ifdef _WIN32
     cv::VideoCapture cap(index, cv::CAP_DSHOW);
 #else
@@ -37,18 +34,15 @@ int main(int argc, char **argv) {
     int width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
     int height = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
 
-    std::cout << "Camera settings: " << width << "x" << height << " @ " << fps
-              << "fps\n";
+    std::cout << "Camera settings: " << width << "x" << height << " @ " << fps << "fps\n";
 
-    mx::Writer writer;
-    mx::EncodeOptions options;
-    options.crf = 24;
+    Writer writer;
     bool status;
 
     if (mode == 0)
-        status = writer.open("output.mp4", width, height, fps, options);
+        status = writer.open("output.mp4", width, height, fps, "24");
     else if (mode == 1)
-        status = writer.open_ts("output.mp4", width, height, fps, options);
+        status = writer.open_ts("output.mp4", width, height, fps, "24");
 
     if (!status) {
         std::cerr << "Failed to open file for writing\n";

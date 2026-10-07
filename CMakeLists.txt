@@ -34,15 +34,27 @@ if(APPLE)
     endif()
 endif()
 
-find_package(PkgConfig REQUIRED)
 find_package(CUDAToolkit QUIET)
 
-pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
-    libavcodec>=58.0.0
-    libavformat>=58.0.0
-    libavutil>=56.0.0
-    libswscale>=5.0.0
-)
+# vcpkg's Windows FFmpeg port provides a FindFFMPEG module, whereas a normal
+# MSVC environment has no pkg-config executable.  Use it directly there and
+# preserve pkg-config discovery for Unix package managers.
+if(WIN32)
+    find_package(FFMPEG REQUIRED)
+    # Keep the resolved libraries rather than a local interface target: mxwrite
+    # is installed/exported and CMake requires every target dependency of an
+    # exported target to be exported too.
+    set(MXWRITE_FFMPEG_TARGET ${FFMPEG_LIBRARIES})
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
+        libavcodec>=58.0.0
+        libavformat>=58.0.0
+        libavutil>=56.0.0
+        libswscale>=5.0.0
+    )
+    set(MXWRITE_FFMPEG_TARGET PkgConfig::FFMPEG)
+endif()
 
 
 if(NOT FFMPEG_FOUND)
@@ -83,7 +95,11 @@ if(NOT FFMPEG_FOUND)
         message(FATAL_ERROR "FFmpeg libraries not found. Please install FFmpeg: brew install ffmpeg")
     endif()
 else()
-    message(STATUS "Found FFmpeg via pkg-config")
+    if(WIN32)
+        message(STATUS "Found FFmpeg via find_package")
+    else()
+        message(STATUS "Found FFmpeg via pkg-config")
+    endif()
     if(NOT FFMPEG_LIBRARIES AND FFMPEG_LINK_LIBRARIES)
         set(FFMPEG_LIBRARIES ${FFMPEG_LINK_LIBRARIES})
     endif()
@@ -176,7 +192,7 @@ if(FFMPEG_LIBRARY_DIRS)
     target_link_directories(mxwrite PUBLIC ${FFMPEG_LIBRARY_DIRS})
 endif()
 
-target_link_libraries(mxwrite PUBLIC PkgConfig::FFMPEG Threads::Threads)
+target_link_libraries(mxwrite PUBLIC ${MXWRITE_FFMPEG_TARGET} Threads::Threads)
 
 if(CUDAToolkit_FOUND)
     # PUBLIC: this define changes the layout of class Writer (adds the
@@ -192,8 +208,15 @@ else()
     message(STATUS "MXWrite: CUDA runtime not found, device-frame ingestion disabled")
 endif()
 
-target_compile_options(mxwrite PRIVATE -O3 -Wall -Wextra -pedantic)
 
+if(MSVC)
+    target_compile_options(mxwrite PRIVATE
+        $<$<CONFIG:Release,RelWithDebInfo,MinSizeRel>:/O2>
+        /W4
+    )
+else()
+    target_compile_options(mxwrite PRIVATE -O3 -Wall -Wextra -pedantic)
+endif()
 if(PYTHON_MODULE)
     if(CMAKE_VERSION VERSION_LESS 3.15)
         message(FATAL_ERROR "PYTHON_MODULE requires CMake 3.15 or newer")
@@ -215,6 +238,7 @@ if(PYTHON_MODULE)
                 "Install it with: ${Python_EXECUTABLE} -m pip install nanobind"
             )
         endif()
+        file(TO_CMAKE_PATH "${NANOBIND_CMAKE_DIR}" NANOBIND_CMAKE_DIR)
         find_package(nanobind CONFIG REQUIRED PATHS "${NANOBIND_CMAKE_DIR}" NO_DEFAULT_PATH)
     endif()
 

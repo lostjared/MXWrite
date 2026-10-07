@@ -1,12 +1,14 @@
 @PACKAGE_INIT@
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
-find_dependency(PkgConfig)
 if(@MXWRITE_CONFIG_WITH_CUDA@)
     find_dependency(CUDAToolkit)
 endif()
 
-if(NOT TARGET PkgConfig::FFMPEG)
+if(WIN32)
+    find_dependency(FFMPEG)
+elseif(NOT TARGET PkgConfig::FFMPEG)
+    find_dependency(PkgConfig)
     pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
         libavcodec>=58.0.0
         libavformat>=58.0.0

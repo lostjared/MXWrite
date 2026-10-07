@@ -106,7 +106,7 @@ struct EncodeOptions {
      *
      * When @ref HdrInfo::enabled is true, the writer switches to a dedicated
      * HEVC Main10 + BT.2020 output path that:
-     *  - Encodes with libx265 at 10-bit (AV_PIX_FMT_YUV420P10LE).
+     *  - Encodes with hevc_nvenc (P010) or libx265 (YUV420P10LE) at 10-bit.
      *  - Tags the stream with BT.2020 primaries, BT.2020 non-constant luminance
      *    matrix, and SMPTE ST.2084 (PQ) transfer.
      *  - Accepts already-PQ/HLG-encoded BT.2020 RGBA16 through the dedicated
@@ -185,7 +185,7 @@ class Writer {
      * applied, so this path skips colour-space conversion and only performs
      *   (a) the BT.2020 non-constant-luminance RGB'->YCbCr' matrix, and
      *   (b) 16-bit -> 10-bit limited-range scaling,
-     * producing AV_PIX_FMT_YUV420P10LE for libx265 Main10. Requires the
+     * producing 10-bit YUV420 for HEVC Main10 encoding. Requires the
      * writer to have been opened with @ref EncodeOptions::HdrInfo::enabled.
      * @param rgba16_buffer Pointer to tightly packed RGBA16 pixels.
      */
@@ -344,8 +344,9 @@ class Writer {
  * @brief Copy audio from one video file to another.
  * @param sourceAudioFile Input media file containing the audio stream.
  * @param destVideoFile Output video file to receive the audio stream.
+ * @param audio_delay_seconds Audio timestamp offset in seconds; positive values delay audio.
  */
-extern void transfer_audio(std::string_view sourceAudioFile, std::string_view destVideoFile);
+extern void transfer_audio(std::string_view sourceAudioFile, std::string_view destVideoFile, double audio_delay_seconds = 0.0);
 /**
  * @brief Free FFmpeg format contexts used during transfer operations.
  * @param source_ctx Source format context.

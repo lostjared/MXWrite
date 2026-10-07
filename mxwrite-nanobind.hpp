@@ -87,7 +87,7 @@ NB_MODULE(mxwrite_ext, m) {
         .def("get_bytes_written", &Writer::get_bytes_written)
         .def("get_duration", &Writer::get_duration);
 
-    m.def("transfer_audio", &transfer_audio, nb::arg("sourceAudioFile"), nb::arg("destVideoFile"));
+    m.def("transfer_audio", &transfer_audio, nb::arg("sourceAudioFile"), nb::arg("destVideoFile"), nb::arg("audio_delay_seconds") = 0.0);
 
     m.def("cleanup_contexts", [](nb::capsule source_ctx, nb::capsule dest_ctx, nb::capsule output_ctx) { cleanup_contexts(static_cast<AVFormatContext *>(source_ctx.data()), static_cast<AVFormatContext *>(dest_ctx.data()), static_cast<AVFormatContext *>(output_ctx.data())); });
 }

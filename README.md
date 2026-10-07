@@ -20,11 +20,11 @@ the FFmpeg build installed on the system.
 - Automatic H.264/HEVC NVENC selection with software fallback
 - Exact selection of any compatible FFmpeg video encoder
 - Direct CUDA RGBA ingestion when CUDA/NVENC support is available
-- HEVC Main10 HDR output with BT.2020 PQ or HLG signaling
+- HEVC Main10 HDR output through NVENC or libx265 with BT.2020 PQ or HLG signaling
 - Preservation of mastering-display and content-light metadata
 - Runtime encoder and encoder-option enumeration
 - Encoded duration, frame-count, byte-count, and hardware-status queries
-- Audio-stream remuxing from an existing media file
+- Audio-stream remuxing from an existing media file with an optional timestamp offset
 - Optional nanobind Python module
 
 ## Requirements
@@ -54,18 +54,34 @@ sudo pacman -S cmake pkgconf ffmpeg
 brew install cmake pkgconf ffmpeg
 ```
 
-On Windows, MXWrite can be built in an MSYS2 UCRT64 or MinGW64 environment
-with the corresponding FFmpeg and CMake packages installed.
+On Windows, CMake uses `find_package(FFMPEG)` rather than pkg-config. Use
+vcpkg's FFmpeg package and toolchain with an MSVC C++20 compiler. Unix and
+macOS builds continue to discover FFmpeg through pkg-config.
 
 ## Building and installing
 
-From the root of the `acidcam-gpu` repository:
+From the parent directory containing the `MXWrite` checkout:
 
 ```bash
 cmake -S MXWrite -B build/mxwrite -DCMAKE_BUILD_TYPE=Release
 cmake --build build/mxwrite --parallel
 cmake --install build/mxwrite
 ```
+
+For a Windows build with vcpkg and Visual Studio, run the following in PowerShell
+from the same parent directory, adjusting the vcpkg path as needed:
+
+```powershell
+cmake -S MXWrite -B build/mxwrite -A x64 `
+    -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
+    -DVCPKG_TARGET_TRIPLET=x64-windows
+cmake --build build/mxwrite --config Release --parallel
+cmake --install build/mxwrite --config Release --prefix ./install/mxwrite
+```
+
+Consumers of this installation should use the same vcpkg toolchain and add the
+installation prefix to `CMAKE_PREFIX_PATH`. The installed MXWrite package
+discovers FFmpeg through vcpkg on Windows without requiring pkg-config.
 
 MXWrite builds as a static library by default. To build a shared library
 instead, configure with `-DSHARED=ON`:
@@ -325,10 +341,24 @@ is unavailable. Explicit timestamps are supported by
 
 ## HDR output
 
-Set `options.hdr.enabled` to select the dedicated HDR path. It currently uses
-software `libx265`, HEVC Main10, and `yuv420p10le`. The output is tagged with
-BT.2020 primaries, BT.2020 non-constant-luminance matrix coefficients, and PQ
+Set `options.hdr.enabled` to select the dedicated HEVC Main10 HDR path.
+Automatic selection prefers `hevc_nvenc` with `p010le` input and falls back to
+software `libx265` with `yuv420p10le` if NVENC is unavailable or fails to open.
+NVENC requires an FFmpeg build with `hevc_nvenc` and a compatible NVIDIA GPU
+and driver; the software fallback requires an FFmpeg build with `libx265`.
+The output is tagged with BT.2020 primaries, BT.2020 non-constant-luminance
+matrix coefficients, and PQ
 by default. Setting `color_trc` to FFmpeg's HLG value produces HLG signaling.
+
+For HDR, `options.codec` accepts `auto`, `nvenc`, `hevc_nvenc`, or `h265_nvenc`
+to prefer NVENC with software fallback. Use `software`, `cpu`, `hevc`, `h265`,
+or `libx265` to select libx265 directly. Other codec selections are rejected
+because this path requires HEVC Main10. A pixel-format override that differs
+from the encoder's required format is ignored with a diagnostic.
+
+Quality uses NVENC CQ or libx265 CRF when no target bitrate is set. Presets are
+mapped for the selected encoder, including software fallback. Invalid extra
+encoder options fail the open operation rather than triggering fallback.
 
 ```cpp
 EncodeOptions options;
@@ -396,7 +426,7 @@ one, so it includes intentional timeline gaps rather than only counting calls.
 
 ## Copying audio into an encoded video
 
-`transfer_audio(source, destination)` remuxes the first audio stream from a
+`transfer_audio(source, destination, audio_delay_seconds = 0.0)` remuxes the first audio stream from a
 source media file into an already encoded destination video. Video packets and
 audio packets are copied without re-encoding, audio is clipped to the video
 duration, and the destination is replaced through a temporary file.
@@ -404,6 +434,23 @@ duration, and the destination is replaced through a temporary file.
 ```cpp
 writer.close();
 transfer_audio("source-with-audio.mp4", "rendered-video.mp4");
+
+// Shift the source audio 250 milliseconds later in the output timeline.
+transfer_audio("source-with-audio.mp4", "rendered-video.mp4", 0.25);
+```
+
+The optional offset is measured in seconds and shifts audio PTS and DTS.
+Positive values delay audio; negative values advance it. The default `0.0`
+preserves the existing two-argument behavior. This shifts packet timestamps
+without re-encoding or inserting silence. Container handling of negative
+timestamps can vary.
+
+The Python binding exposes the same optional argument:
+
+```python
+import mxwrite_ext
+
+mxwrite_ext.transfer_audio("source.mp4", "rendered.mp4", audio_delay_seconds=0.25)
 ```
 
 The helper supports common containers including MP4, MKV, MOV, AVI, MPEG-TS,

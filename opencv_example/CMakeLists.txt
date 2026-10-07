@@ -14,20 +14,10 @@ endif()
 #find_package(OpenCV REQUIRED  HINTS "C:/opencv4")
 find_package(OpenCV REQUIRED)
 find_package(MXWrite REQUIRED)
-find_package(PkgConfig REQUIRED)
-
-pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
-    libavcodec 
-    libavformat 
-    libavutil 
-    libswscale 
-)
 
 add_executable(opencv_ex opencv_ex.cpp)
 target_include_directories(opencv_ex PRIVATE ${OpenCV_INCLUDE_DIRS} ${MXWrite_INCLUDE_DIRS})
-target_link_libraries(opencv_ex PRIVATE 
-    ${OpenCV_LIBS} 
-    MXWrite::mxwrite 
-    PkgConfig::FFMPEG
+target_link_libraries(opencv_ex PRIVATE
+    ${OpenCV_LIBS}
+    MXWrite::mxwrite
 )
-
