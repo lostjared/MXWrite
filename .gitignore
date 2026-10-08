@@ -1,0 +1,4 @@
+/build*/
+/python_mod/
+__pycache__/
+*.pyc

@@ -100,6 +100,61 @@ library directory.
 
 ### Python module
 
+#### Windows quick start
+
+From this checkout, use the same build helper and launcher workflow as MXVK.
+Install Visual Studio with the C++ workload, CMake, and vcpkg's FFmpeg package
+first (`C:\vcpkg\vcpkg.exe install ffmpeg:x64-windows`). Then run:
+
+```powershell
+.\build-python.cmd
+.\mxpy.cmd --check
+.\mxpy.cmd pattern --output "$env:TEMP\mxwrite-pattern.mp4"
+```
+
+The build helper uses `VCPKG_ROOT` or `C:\vcpkg`, chooses vcpkg's Python when
+available (otherwise `python.exe`), builds the Release extension, and checks
+the import. If `VCPKG_ROOT` has no FFmpeg installation but `C:\vcpkg` does,
+the helper uses `C:\vcpkg`; an explicit `-VcpkgRoot` always takes precedence.
+Install `nanobind` and `numpy` in that Python first if the helper
+reports they are missing. The `.cmd` wrapper runs the PowerShell helper with
+a process-only execution policy so it also works when local scripts are
+disabled; it does not change your saved PowerShell policy. You can also run
+`build-python.ps1` directly when scripts are enabled. Override paths when needed:
+
+```powershell
+.\build-python.cmd -VcpkgRoot D:\vcpkg -Python C:\Python313\python.exe
+.\mxpy.cmd --module-dir .\build-python-windows\Release --check
+```
+
+`mxpy.cmd` finds the extension in local `build*` or `python_mod` directories,
+uses a compatible Python interpreter from the CMake cache when necessary,
+and registers the module and vcpkg DLL directories before importing. There is
+no need to set `PYTHONPATH` or edit `PATH`. It also runs your own scripts,
+modules, or inline code:
+
+```powershell
+.\mxpy.cmd examples\python_example.py --explicit-pts
+.\mxpy.cmd opencv --camera 0 --output capture.mp4
+.\mxpy.cmd -c "import mxwrite_ext; print(len(mxwrite_ext.available_video_encoders()))"
+.\mxpy.cmd -m your_module
+```
+
+The OpenCV example additionally requires `opencv-python` in the selected
+interpreter. Use `--list` to list examples, `--module-dir` to select a build,
+and repeat `--dll-dir PATH` for additional runtime DLL locations. Environment
+overrides are `MXWRITE_PYTHON` (launcher/build Python),
+`MXWRITE_PYTHON_MODULE_DIR` (module directory), and `MXWRITE_DLL_DIRS`
+(semicolon-separated DLL directories).
+
+The helper builds static MXWrite with CUDA device-frame ingestion disabled
+by default. Pass `-WithCuda` to allow CUDA Toolkit detection; `CUDA_PATH`
+supplies its runtime DLL directory to the launcher. Software encoding and
+FFmpeg hardware encoders such as NVENC remain available without this switch,
+depending on your FFmpeg build and driver.
+
+#### Manual CMake or pip builds
+
 The nanobind extension is disabled by default. Enable it with
 `-DPYTHON_MODULE=ON`:
 
